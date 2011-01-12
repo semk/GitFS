@@ -15,7 +15,7 @@ from time import time
 import logging
 import datetime
 import os
-from threading import Lock
+from threading import Lock, Condition, Thread
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
@@ -50,7 +50,8 @@ class GitStatus(object):
         self.update()
         return self.status.get('renamed',  []) + \
                self.status.get('modified', []) + \
-               self.status.get('new file', [])
+               self.status.get('new file', []) + \
+               self.status.get('deleted',  [])
 
     def unstagedFiles(self):
         self.update()
@@ -66,7 +67,7 @@ class GitRepo(object):
         self.origin = origin
         self.branch = branch
         self.status = GitStatus(path)
-        # sync all the files with GitHub
+        # sync all the files with git
         if sync:
             self.synchronize()
 
@@ -103,10 +104,30 @@ class GitFS(LoggingMixIn, Operations):
         self.branch = branch
         self.root = os.path.realpath(path)
         self.repo = GitRepo(path, origin, branch, sync=True)
+        self.halt = False
         self.rwlock = Lock()
+        self.sync_c = Condition()
+        self.sync_thread = Thread(target=self._sync, args=())
+        self.sync_thread.start()
+
+    def _sync(self):
+        while True:
+            self.sync_c.acquire()
+            if not self.halt:
+                # wait till a sync request comes
+                self.sync_c.wait()
+                self.repo.synchronize()
+                self.sync_c.release()
+            else:
+                self.sync_c.release()
+                break
     
-    def __del__(self):
-        self.repo.synchronize()
+    def destroy(self, path):
+        # stop sync thread
+        self.sync_c.acquire()
+        self.halt = True
+        self.sync_c.notifyAll()
+        self.sync_c.release()
     
     def __call__(self, op, path, *args):
         return super(GitFS, self).__call__(op, self.root + path, *args)
