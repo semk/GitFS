@@ -3,9 +3,11 @@
 # Use Git as a Storage Filesystem
 #
 # Copyright (c) 2011 Sreejith K <sreejitemk@gmail.com>
+# Licensed under FreeBSD License. Refer COPYING for more information
+#
 # http://foobarnbaz.com
 # Created on 11th Jan 2011
-#
+
 
 from __future__ import with_statement
 
